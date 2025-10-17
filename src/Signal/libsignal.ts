@@ -1,4 +1,4 @@
-/* @ts-ignore */
+// @ts-nocheck
 import * as libsignal from 'libsignal'
 import { LRUCache } from 'lru-cache'
 import type { LIDMapping, SignalAuthState, SignalKeyStoreWithTransaction } from '../Types'
