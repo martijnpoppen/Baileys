@@ -1,6 +1,7 @@
+import type { AxiosRequestConfig } from 'axios';
 import { proto } from '../../WAProto/index.js';
-import type { AuthenticationCreds, BaileysEventEmitter, CacheStore, SignalKeyStoreWithTransaction, SignalRepositoryWithLIDStore, WAMessage, WAMessageKey } from '../Types';
-import type { ILogger } from './logger';
+import type { AuthenticationCreds, BaileysEventEmitter, CacheStore, SignalKeyStoreWithTransaction, SignalRepositoryWithLIDStore, WAMessage, WAMessageKey } from '../Types/index.js';
+import type { ILogger } from './logger.js';
 type ProcessMessageContext = {
     shouldProcessHistoryMsg: boolean;
     placeholderResendCache?: CacheStore;
@@ -8,11 +9,11 @@ type ProcessMessageContext = {
     keyStore: SignalKeyStoreWithTransaction;
     ev: BaileysEventEmitter;
     logger?: ILogger;
-    options: RequestInit;
+    options: AxiosRequestConfig<{}>;
     signalRepository: SignalRepositoryWithLIDStore;
 };
 /** Cleans a received message to further processing */
-export declare const cleanMessage: (message: WAMessage, meId: string) => void;
+export declare const cleanMessage: (message: WAMessage, meId: string, meLid: string) => void;
 export declare const isRealMessage: (message: WAMessage) => boolean;
 export declare const shouldIncrementChatUnread: (message: WAMessage) => boolean;
 /**

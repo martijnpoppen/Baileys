@@ -1,12 +1,13 @@
-import type { WAMediaUploadFunction, WAUrlInfo } from '../Types';
-import type { ILogger } from './logger';
+import type { AxiosRequestConfig } from 'axios';
+import type { WAMediaUploadFunction, WAUrlInfo } from '../Types/index.js';
+import type { ILogger } from './logger.js';
 export type URLGenerationOptions = {
     thumbnailWidth: number;
     fetchOpts: {
         /** Timeout in ms */
         timeout: number;
         proxyUrl?: string;
-        headers?: HeadersInit;
+        headers?: AxiosRequestConfig<{}>['headers'];
     };
     uploadImage?: WAMediaUploadFunction;
     logger?: ILogger;

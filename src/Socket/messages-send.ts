@@ -42,6 +42,7 @@ import {
 	type FullJid,
 	getBinaryNodeChild,
 	getBinaryNodeChildren,
+	getServerFromDomainType,
 	isHostedLidUser,
 	isHostedPnUser,
 	isJidGroup,
@@ -61,7 +62,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		logger,
 		linkPreviewImageThumbnailWidth,
 		generateHighQualityLinkPreview,
-		options: httpRequestOptions,
+		options: axiosOptions,
 		patchMessageBeforeSending,
 		cachedGroupMetadata,
 		enableRecentMessageCache,
@@ -81,12 +82,16 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		groupToggleEphemeral
 	} = sock
 
+	const shouldCloseUserDevicesCache = !config.userDevicesCache
 	const userDevicesCache =
 		config.userDevicesCache ||
 		new NodeCache<JidWithDevice[]>({
 			stdTTL: DEFAULT_CACHE_TTLS.USER_DEVICES, // 5 minutes
 			useClones: false
 		})
+	const localUserDevicesCache = shouldCloseUserDevicesCache
+		? (userDevicesCache as NodeCache<JidWithDevice[]>)
+		: undefined
 
 	const peerSessionsCache = new NodeCache<boolean>({
 		stdTTL: DEFAULT_CACHE_TTLS.USER_DEVICES,
@@ -95,6 +100,19 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 	// Initialize message retry manager if enabled
 	const messageRetryManager = enableRecentMessageCache ? new MessageRetryManager(logger, maxMsgRetryCount) : null
+
+	const baseEnd = sock.end
+	let resourcesClosed = false
+	const cleanupResources = () => {
+		if (resourcesClosed) {
+			return
+		}
+
+		resourcesClosed = true
+		peerSessionsCache.close()
+		localUserDevicesCache?.close()
+		messageRetryManager?.shutdown()
+	}
 
 	// Prevent race conditions in Signal session encryption by user
 	const encryptionMutex = makeKeyedMutex()
@@ -245,7 +263,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			})
 			.filter(jid => jid !== null)
 
-		let mgetDevices: undefined | Record<string, FullJid[] | undefined>
+		let mgetDevices: undefined | Record<string, JidWithDevice[] | undefined>
 
 		if (useCache && userDevicesCache.mget) {
 			const usersToFetch = jidsWithUser.map(j => j?.user).filter(Boolean) as string[]
@@ -256,11 +274,12 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			if (useCache) {
 				const devices =
 					mgetDevices?.[user!] ||
-					(userDevicesCache.mget ? undefined : ((await userDevicesCache.get(user!)) as FullJid[]))
+					(userDevicesCache.mget ? undefined : ((await userDevicesCache.get(user!)) as JidWithDevice[]))
 				if (devices) {
+					const isLidJid = jid.includes('@lid')
 					const devicesWithJid = devices.map(d => ({
 						...d,
-						jid: jidEncode(d.user, d.server, d.device)
+						jid: isLidJid ? jidEncode(d.user, 'lid', d.device) : jidEncode(d.user, 's.whatsapp.net', d.device)
 					}))
 					deviceResults.push(...devicesWithJid)
 
@@ -279,7 +298,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 		const requestedLidUsers = new Set<string>()
 		for (const jid of toFetch) {
-			if (isLidUser(jid) || isHostedLidUser(jid)) {
+			if (jid.includes('@lid') || jid.includes('@hosted.lid')) {
 				const user = jidDecode(jid)?.user
 				if (user) requestedLidUsers.add(user)
 			}
@@ -320,9 +339,10 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 				// Process all devices for this user
 				for (const item of userDevices) {
+					const deterministicServer = getServerFromDomainType(item.server, item.domainType)
 					const finalJid = isLidUser
-						? jidEncode(user, item.server, item.device)
-						: jidEncode(item.user, item.server, item.device)
+						? jidEncode(user, deterministicServer, item.device)
+						: jidEncode(item.user, deterministicServer, item.device)
 
 					deviceResults.push({
 						...item,
@@ -403,10 +423,10 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		if (jidsRequiringFetch.length) {
 			// LID if mapped, otherwise original
 			const wireJids = [
-				...jidsRequiringFetch.filter(jid => !!isLidUser(jid) || !!isHostedLidUser(jid)),
+				...jidsRequiringFetch.filter(jid => !!jid.includes('@lid') || !!jid.includes('@hosted.lid')),
 				...(
 					(await signalRepository.lidMapping.getLIDsForPNs(
-						jidsRequiringFetch.filter(jid => !!isPnUser(jid) || !!isHostedPnUser(jid))
+						jidsRequiringFetch.filter(jid => !!jid.includes('@s.whatsapp.net') || !!jid.includes('@hosted'))
 					)) || []
 				).map(a => a.lid)
 			]
@@ -1024,8 +1044,14 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 
 	const waitForMsgMediaUpdate = bindWaitForEvent(ev, 'messages.media-update')
 
+	const end: typeof sock.end = error => {
+		cleanupResources()
+		baseEnd(error)
+	}
+
 	return {
 		...sock,
+		end,
 		getPrivacyTokens,
 		assertSessions,
 		relayMessage,
@@ -1111,7 +1137,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 							thumbnailWidth: linkPreviewImageThumbnailWidth,
 							fetchOpts: {
 								timeout: 3_000,
-								...(httpRequestOptions || {})
+								...(axiosOptions || {})
 							},
 							logger,
 							uploadImage: generateHighQualityLinkPreview ? waUploadToServer : undefined

@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios'
 import { proto } from '../../WAProto/index.js'
 import type {
 	AuthenticationCreds,
@@ -39,7 +40,7 @@ type ProcessMessageContext = {
 	keyStore: SignalKeyStoreWithTransaction
 	ev: BaileysEventEmitter
 	logger?: ILogger
-	options: RequestInit
+	options: AxiosRequestConfig<{}>
 	signalRepository: SignalRepositoryWithLIDStore
 }
 
