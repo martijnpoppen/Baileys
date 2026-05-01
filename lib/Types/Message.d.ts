@@ -17,7 +17,9 @@ export type WAContactMessage = proto.Message.IContactMessage;
 export type WAContactsArrayMessage = proto.Message.IContactsArrayMessage;
 export type WAMessageKey = proto.IMessageKey & {
     remoteJidAlt?: string;
+    remoteJidUsername?: string;
     participantAlt?: string;
+    participantUsername?: string;
     server_id?: string;
     addressingMode?: string;
     isViewOnce?: boolean;
@@ -70,6 +72,8 @@ export interface WAUrlInfo {
 type Mentionable = {
     /** list of jids that are mentioned in the accompanying text */
     mentions?: string[];
+    /** mention all */
+    mentionAll?: boolean;
 };
 type Contextable = {
     /** add contextInfo to the message */
@@ -105,6 +109,12 @@ export type EventMessageOptions = {
     extraGuestsAllowed?: boolean;
     messageSecret?: Uint8Array<ArrayBufferLike>;
 };
+export type AlbumMessageOptions = {
+    /** Number of images expected in the album */
+    expectedImageCount?: number;
+    /** Number of videos expected in the album */
+    expectedVideoCount?: number;
+};
 type SharePhoneNumber = {
     sharePhoneNumber: boolean;
 };
@@ -138,7 +148,10 @@ export type AnyMediaMessageContent = (({
     caption?: string;
 } & Contextable)) & {
     mimetype?: string;
-} & Editable;
+} & Editable & {
+    /** key of the parent albumMessage to associate this media with */
+    albumParentKey?: WAMessageKey;
+};
 export type ButtonReplyInfo = {
     displayText: string;
     id: string;
@@ -161,7 +174,9 @@ export type AnyRegularMessageContent = (({
     event: EventMessageOptions;
 } | ({
     poll: PollMessageOptions;
-} & Mentionable & Contextable & Editable) | {
+} & Mentionable & Contextable & Editable) | ({
+    album: AlbumMessageOptions;
+} & Contextable & Mentionable) | {
     contacts: {
         displayName?: string;
         contacts: proto.Message.IContactMessage[];
